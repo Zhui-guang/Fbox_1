@@ -17,6 +17,11 @@ void GFX_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color
     ST7789_FillRect(x, y, w, h, color);
 }
 
+void GFX_DrawRGB565Bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *pixels)
+{
+    ST7789_DrawRGB565Bitmap(x, y, w, h, pixels);
+}
+
 void GFX_DrawChar8x16(uint16_t x, uint16_t y, char ch, uint16_t fg, uint16_t bg)
 {
     uint8_t row;
@@ -72,4 +77,3 @@ void GFX_DrawText8x16(uint16_t x, uint16_t y, const char *text, uint16_t fg, uin
         ++text;
     }
 }
-

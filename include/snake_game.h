@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include "main.h"
+#include "game_iface.h"
 
 void Snake_Game_Init(void);
 void Snake_Game_Enter(void);
@@ -15,6 +16,7 @@ void Snake_Game_Render(void);
 uint8_t Snake_Game_ConsumeExitRequest(void);
 uint16_t Snake_Game_GetHighScore(void);
 void Snake_Game_SetHighScore(uint16_t high_score);
+const GameOps *Snake_Game_GetOps(void);
 
 #ifdef __cplusplus
 }

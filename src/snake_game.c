@@ -451,3 +451,19 @@ void Snake_Game_SetHighScore(uint16_t hs)
     high_score = hs;
     hud_dirty = 1U;
 }
+
+const GameOps *Snake_Game_GetOps(void)
+{
+    static const GameOps ops = {
+        .name = "Snake",
+        .init = Snake_Game_Init,
+        .enter = Snake_Game_Enter,
+        .handle_input = Snake_Game_HandleInput,
+        .update = Snake_Game_Update,
+        .render = Snake_Game_Render,
+        .consume_exit_request = Snake_Game_ConsumeExitRequest,
+        .get_high_score = Snake_Game_GetHighScore,
+        .set_high_score = Snake_Game_SetHighScore
+    };
+    return &ops;
+}

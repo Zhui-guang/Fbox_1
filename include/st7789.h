@@ -23,6 +23,7 @@ void ST7789_SetRotation(ST7789_Rotation rotation);
 void ST7789_FillScreen(uint16_t color);
 void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
 void ST7789_DrawPixel(uint16_t x, uint16_t y, uint16_t color);
+void ST7789_DrawRGB565Bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *pixels);
 void ST7789_TestPattern(void);
 
 #ifdef __cplusplus
@@ -30,4 +31,3 @@ void ST7789_TestPattern(void);
 #endif
 
 #endif /* __ST7789_H__ */
-

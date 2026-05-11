@@ -251,6 +251,54 @@ void ST7789_FillScreen(uint16_t color)
     ST7789_FillRect(0U, 0U, ST7789_WIDTH, ST7789_HEIGHT, color);
 }
 
+void ST7789_DrawRGB565Bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *pixels)
+{
+    uint32_t total;
+    uint32_t i;
+    uint8_t tx[128];
+    uint32_t tx_len;
+
+    if ((pixels == (const uint16_t *)0) ||
+        (x >= ST7789_WIDTH) || (y >= ST7789_HEIGHT) ||
+        (w == 0U) || (h == 0U))
+    {
+        return;
+    }
+
+    if ((x + w) > ST7789_WIDTH)
+    {
+        w = ST7789_WIDTH - x;
+    }
+    if ((y + h) > ST7789_HEIGHT)
+    {
+        h = ST7789_HEIGHT - y;
+    }
+
+    st7789_set_address_window(x, y, (uint16_t)(x + w - 1U), (uint16_t)(y + h - 1U));
+    HAL_GPIO_WritePin(ST7789_DC_GPIO_PORT, ST7789_DC_PIN, GPIO_PIN_SET);
+    st7789_select();
+
+    total = (uint32_t)w * (uint32_t)h;
+    tx_len = 0U;
+    for (i = 0U; i < total; ++i)
+    {
+        uint16_t c = pixels[i];
+        tx[tx_len++] = (uint8_t)(c >> 8);
+        tx[tx_len++] = (uint8_t)(c & 0xFFU);
+        if (tx_len >= sizeof(tx))
+        {
+            HAL_SPI_Transmit(&hspi1, tx, (uint16_t)tx_len, HAL_MAX_DELAY);
+            tx_len = 0U;
+        }
+    }
+    if (tx_len > 0U)
+    {
+        HAL_SPI_Transmit(&hspi1, tx, (uint16_t)tx_len, HAL_MAX_DELAY);
+    }
+
+    st7789_unselect();
+}
+
 void ST7789_TestPattern(void)
 {
     uint16_t bar_h = ST7789_HEIGHT / 4U;
@@ -261,4 +309,3 @@ void ST7789_TestPattern(void)
     ST7789_FillRect(0U, (uint16_t)(bar_h * 3U), ST7789_WIDTH,
                     (uint16_t)(ST7789_HEIGHT - bar_h * 3U), 0xFFFFU);  /* White */
 }
-

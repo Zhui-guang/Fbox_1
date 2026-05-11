@@ -1,9 +1,11 @@
-# Fbox_1 Architecture (Current)
+﻿# Fbox_1 Architecture (Current)
 
 ## 1) Layering
 
 - App/Game layer
-  - `src/app.c`
+  - `src/app.c` (lifecycle + scheduler only)
+  - `src/app_input.c` (input event routing + page action logic)
+  - `src/app_render.c` (screen/serial rendering)
   - `src/snake_game.c`
 - Service layer
   - `src/input_service.c` (scan + debounce + edge/repeat + event queue)
@@ -12,6 +14,19 @@
   - `src/storage_service.c` (flash persistence, delayed save)
 - Driver layer
   - `src/st7789.c`, `src/spi_lcd.c`, `src/adc.c`, `src/keys.c`, `src/usart.c`
+
+### App Context
+
+- Shared runtime state moved to `AppContext` (`include/app_priv.h`):
+  - state id
+  - menu cursor
+  - render dirty flag
+  - timing ticks
+  - debug edge latches
+- Benefit:
+  - removes large static-cluster from one file
+  - makes future split to multi-game router easier
+  - isolates input/render responsibilities for safer iteration
 
 ## 2) Display Call Chain
 
@@ -139,3 +154,8 @@ Rule:
   - `src/logo_badge.c` (RGB565 C array, 52x52)
 - Boot page now renders real crest + text:
   - `Fbox1.0 Game Console`
+
+- Rendering path:
+  - Screen_DrawRGB565Bitmap -> GFX_DrawRGB565Bitmap -> ST7789_DrawRGB565Bitmap
+  - avoids per-pixel API overhead during logo draw
+
