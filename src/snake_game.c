@@ -1,7 +1,8 @@
-#include "snake_game.h"
+﻿#include "snake_game.h"
 #include "screen.h"
 #include "input_service.h"
 #include "audio_service.h"
+#include "player_service.h"
 #include "ui_layout.h"
 #include <stdio.h>
 
@@ -55,6 +56,7 @@ static uint16_t score;
 static uint16_t high_score;
 static uint32_t last_step_tick;
 static uint32_t step_ms;
+static uint8_t snake_difficulty = 2U; /* 1鏄?2涓?3闅?*/
 static uint32_t rng_state;
 static uint8_t exit_requested;
 static uint8_t render_full;
@@ -67,6 +69,20 @@ static SnakePoint delta_clear_tail;
 static SnakeState last_rendered_state;
 static uint16_t last_rendered_score;
 static uint16_t last_rendered_high_score;
+static uint8_t food_dirty;
+
+static void snake_play_fail_sound(void)
+{
+    if (Audio_Service_IsEnabled() == 0U)
+    {
+        return;
+    }
+    Player_Play(4U);
+    if (Player_GetState() != PLAYER_PLAYING)
+    {
+        Audio_Service_PlayEvent(SOUND_GAME_OVER);
+    }
+}
 
 static uint32_t snake_rand_next(void)
 {
@@ -102,6 +118,7 @@ static void snake_spawn_food(void)
 
     food.x = x;
     food.y = y;
+    food_dirty = 1U;
 }
 
 static void snake_reset(void)
@@ -123,12 +140,15 @@ static void snake_reset(void)
     dir_next = SNAKE_DIR_RIGHT;
     snake_state = SNAKE_STATE_RUNNING;
     score = 0U;
-    step_ms = SNAKE_STEP_MS_DEFAULT;
+    if (snake_difficulty == 1U) step_ms = 150U;
+    else if (snake_difficulty == 3U) step_ms = 95U;
+    else step_ms = SNAKE_STEP_MS_DEFAULT;
     snake_spawn_food();
     render_full = 1U;
     hud_dirty = 1U;
     delta_valid = 0U;
     delta_clear_tail_valid = 0U;
+    food_dirty = 1U;
 }
 
 static uint8_t snake_dir_is_opposite(SnakeDir a, SnakeDir b)
@@ -153,28 +173,26 @@ static void snake_draw_cell(uint8_t gx, uint8_t gy, uint16_t color)
 
 static void snake_render_hud(void)
 {
-    char line1[32];
-    char line2[40];
+    char line1[40];
 
     Screen_FillRect(UI_SAFE_X, 0U, UI_SAFE_W, UI_TOP_H, COLOR_BG);
-    (void)snprintf(line1, sizeof(line1), "SCORE:%u HI:%u", score, high_score);
-    Screen_DrawText(UI_HEADER_TEXT_X, 2U, line1, COLOR_TEXT, COLOR_BG);
+    (void)snprintf(line1, sizeof(line1), "贪吃蛇 分:%u 高:%u 长:%u", score, high_score, snake_len);
+    Screen_DrawTextUtf8Fallback(UI_HEADER_TEXT_X, 2U, line1, COLOR_TEXT, COLOR_BG);
 
     if (snake_state == SNAKE_STATE_PAUSED)
     {
-        Screen_DrawText((uint16_t)(UI_HEADER_TEXT_X + 138U), 2U, "PAUSE", COLOR_ACCENT, COLOR_BG);
+        Screen_DrawTextUtf8Fallback((uint16_t)(UI_HEADER_TEXT_X + 138U), 2U, "暂停", COLOR_ACCENT, COLOR_BG);
     }
     else if (snake_state == SNAKE_STATE_GAME_OVER)
     {
-        Screen_DrawText((uint16_t)(UI_HEADER_TEXT_X + 120U), 2U, "GAME OVER", COLOR_FOOD, COLOR_BG);
-        (void)snprintf(line2, sizeof(line2), "A:RESTART B/MENU:BACK");
+        Screen_DrawTextUtf8Fallback((uint16_t)(UI_HEADER_TEXT_X + 120U), 2U, "结束", COLOR_FOOD, COLOR_BG);
         Screen_FillRect(UI_SAFE_X, UI_SCREEN_H - UI_BOTTOM_H, UI_SAFE_W, UI_BOTTOM_H, COLOR_BG);
-        Screen_DrawText(UI_FOOTER_TEXT_X, UI_SCREEN_H - UI_BOTTOM_H, line2, COLOR_TEXT, COLOR_BG);
+        Screen_DrawTextUtf8Fallback(UI_FOOTER_TEXT_X, UI_SCREEN_H - UI_BOTTOM_H, "START暂停  B/MENU返回", COLOR_TEXT, COLOR_BG);
     }
     else
     {
         Screen_FillRect(UI_SAFE_X, UI_SCREEN_H - UI_BOTTOM_H, UI_SAFE_W, UI_BOTTOM_H, COLOR_BG);
-        Screen_DrawText(UI_FOOTER_TEXT_X, UI_SCREEN_H - UI_BOTTOM_H, "START:PAUSE B/MENU:BACK", COLOR_TEXT, COLOR_BG);
+        Screen_DrawTextUtf8Fallback(UI_FOOTER_TEXT_X, UI_SCREEN_H - UI_BOTTOM_H, "A重开  B/MENU返回", COLOR_TEXT, COLOR_BG);
     }
 }
 
@@ -286,7 +304,7 @@ void Snake_Game_Update(uint32_t now_tick)
         {
             snake_state = SNAKE_STATE_GAME_OVER;
             hud_dirty = 1U;
-            Audio_Service_PlayEvent(SOUND_HIT);
+            snake_play_fail_sound();
             return;
         }
         new_head.y--;
@@ -298,7 +316,7 @@ void Snake_Game_Update(uint32_t now_tick)
         {
             snake_state = SNAKE_STATE_GAME_OVER;
             hud_dirty = 1U;
-            Audio_Service_PlayEvent(SOUND_HIT);
+            snake_play_fail_sound();
             return;
         }
     }
@@ -308,7 +326,7 @@ void Snake_Game_Update(uint32_t now_tick)
         {
             snake_state = SNAKE_STATE_GAME_OVER;
             hud_dirty = 1U;
-            Audio_Service_PlayEvent(SOUND_HIT);
+            snake_play_fail_sound();
             return;
         }
         new_head.x--;
@@ -320,7 +338,7 @@ void Snake_Game_Update(uint32_t now_tick)
         {
             snake_state = SNAKE_STATE_GAME_OVER;
             hud_dirty = 1U;
-            Audio_Service_PlayEvent(SOUND_HIT);
+            snake_play_fail_sound();
             return;
         }
     }
@@ -331,7 +349,7 @@ void Snake_Game_Update(uint32_t now_tick)
         {
             snake_state = SNAKE_STATE_GAME_OVER;
             hud_dirty = 1U;
-            Audio_Service_PlayEvent(SOUND_GAME_OVER);
+            snake_play_fail_sound();
             return;
         }
     }
@@ -400,6 +418,7 @@ void Snake_Game_Render(void)
         }
 
         snake_draw_cell(food.x, food.y, COLOR_FOOD);
+        food_dirty = 0U;
         for (i = 0U; i < snake_len; ++i)
         {
             snake_draw_cell(snake_body[i].x, snake_body[i].y, (i == 0U) ? COLOR_HEAD : COLOR_SNAKE);
@@ -416,7 +435,11 @@ void Snake_Game_Render(void)
         {
             snake_draw_cell(delta_clear_tail.x, delta_clear_tail.y, COLOR_GRID);
         }
-        snake_draw_cell(food.x, food.y, COLOR_FOOD);
+        if (food_dirty != 0U)
+        {
+            snake_draw_cell(food.x, food.y, COLOR_FOOD);
+            food_dirty = 0U;
+        }
         delta_valid = 0U;
         delta_clear_tail_valid = 0U;
     }
@@ -455,7 +478,7 @@ void Snake_Game_SetHighScore(uint16_t hs)
 const GameOps *Snake_Game_GetOps(void)
 {
     static const GameOps ops = {
-        .name = "Snake",
+        .name = "贪吃蛇",
         .init = Snake_Game_Init,
         .enter = Snake_Game_Enter,
         .handle_input = Snake_Game_HandleInput,
@@ -467,3 +490,16 @@ const GameOps *Snake_Game_GetOps(void)
     };
     return &ops;
 }
+
+void Snake_Game_SetDifficulty(uint8_t level)
+{
+    if (level < 1U) level = 1U;
+    if (level > 3U) level = 3U;
+    snake_difficulty = level;
+}
+
+uint8_t Snake_Game_GetDifficulty(void)
+{
+    return snake_difficulty;
+}
+

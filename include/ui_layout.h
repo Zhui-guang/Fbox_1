@@ -22,11 +22,12 @@ extern "C" {
 #define UI_SAFE_W            (UI_SCREEN_W - (UI_SAFE_MARGIN_X * 2U))
 #define UI_SAFE_H            (UI_SCREEN_H - (UI_SAFE_MARGIN_Y * 2U))
 
-#define UI_BG_COLOR          0x0000U
+#define UI_BG_COLOR          0x0841U
 #define UI_FG_COLOR          0xFFFFU
-#define UI_ACCENT_COLOR      0x07E0U
-#define UI_HIGHLIGHT_COLOR   0xFFFFU
+#define UI_ACCENT_COLOR      0x2D7FU
+#define UI_HIGHLIGHT_COLOR   0xDF1BU
 #define UI_HIGHLIGHT_TEXT    0x0000U
+#define UI_WARN_COLOR        0xFD20U
 #define UI_MARGIN_X          (UI_SAFE_MARGIN_X + 4U)
 #define UI_LINE_HEIGHT       16U
 #define UI_EDGE_GUARD_CH_W   8U

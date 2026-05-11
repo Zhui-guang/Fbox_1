@@ -10,12 +10,27 @@
 #include "spi_lcd.h"
 #include "st7789.h"
 #include "gfx.h"
+#include "ui_layout.h"
+#include "ui_widgets.h"
+#include "app_error.h"
+#include "debug_log.h"
+#include "w25q128.h"
+#include "pcm_uploader.h"
 
 void SystemClock_Config(void);
 static void Error_LED_Init(void);
+static void App_FaultLoop(AppErrorCode code, uint8_t lcd_ready);
 
 int main(void)
 {
+    HAL_StatusTypeDef spi_rc;
+    HAL_StatusTypeDef lcd_rc;
+    HAL_StatusTypeDef flash_rc;
+    uint8_t jedec_mid = 0U;
+    uint8_t jedec_type = 0U;
+    uint8_t jedec_cap = 0U;
+    uint8_t lcd_ready = 0U;
+
     /* HAL_Init 会初始化 Flash 接口并配置 SysTick。SysTick_Handler 中必须调用
      * HAL_IncTick()，否则 HAL_Delay 和所有基于 HAL_GetTick 的调度都会失效。 */
     HAL_Init();
@@ -28,17 +43,49 @@ int main(void)
     MX_GPIO_Init();
     MX_USART2_UART_Init();
     MX_ADC1_Init();
-    MX_SPI1_LCD_Init();
+    spi_rc = MX_SPI1_LCD_Init();
+    if (spi_rc != HAL_OK)
+    {
+        App_FaultLoop(APP_ERR_SPI_LCD_INIT, lcd_ready);
+    }
+    flash_rc = W25Q128_Init();
+    if (flash_rc == HAL_OK)
+    {
+        flash_rc = W25Q128_ReadJedecId(&jedec_mid, &jedec_type, &jedec_cap);
+    }
+    if (flash_rc == HAL_OK)
+    {
+        Debug_Log("[FLASH] JEDEC ID: %02X %02X %02X\r\n", jedec_mid, jedec_type, jedec_cap);
+    }
+    else
+    {
+        Debug_Log("[FLASH] JEDEC read failed\r\n");
+    }
     Keys_Init();
     Input_Service_Init();
     Storage_Service_Init();
     Audio_Service_Init();
-    ST7789_Init();
+    lcd_rc = ST7789_Init();
+    if (lcd_rc != HAL_OK)
+    {
+        App_FaultLoop(APP_ERR_ST7789_INIT, lcd_ready);
+    }
+    lcd_ready = 1U;
     GFX_Init();
+
+    if (Audio_Service_IsReady() == 0U)
+    {
+        /* I2S 初始化失败不直接停机，显示故障页后可继续进入 UI。 */
+        UIW_DrawDialog("故障", "音频I2S初始化失败", "将以静音模式继续运行", "A/B: 继续");
+        Debug_Log("[FAULT] %s\r\n", App_ErrorToString(APP_ERR_AUDIO_I2S_INIT));
+        HAL_Delay(1400);
+    }
+
     App_Init();
 
     while (1)
     {
+        PCM_Uploader_Poll();
         /* 裸机主循环只调度应用层；不要在 main 中堆业务逻辑。 */
         App_Update();
     }
@@ -109,6 +156,26 @@ static void Error_LED_Init(void)
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(USER_LED_GPIO_PORT, &GPIO_InitStruct);
+}
+
+static void App_FaultLoop(AppErrorCode code, uint8_t lcd_ready)
+{
+    __disable_irq();
+    Error_LED_Init();
+
+    if (lcd_ready != 0U)
+    {
+        UIW_DrawDialog("FAULT", "System bring-up failed", App_ErrorToString(code), "Power cycle / reflash");
+    }
+
+    Debug_Log("[FATAL] %s\r\n", App_ErrorToString(code));
+    while (1)
+    {
+        HAL_GPIO_TogglePin(USER_LED_GPIO_PORT, USER_LED_PIN);
+        for (volatile uint32_t i = 0; i < 800000U; ++i)
+        {
+        }
+    }
 }
 
 #ifdef USE_FULL_ASSERT

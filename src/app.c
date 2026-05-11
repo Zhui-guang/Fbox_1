@@ -1,9 +1,13 @@
 #include "app.h"
 #include "app_priv.h"
 #include "audio_service.h"
+#include "brick_game.h"
 #include "gpio.h"
+#include "player_service.h"
 #include "snake_game.h"
 #include "storage_service.h"
+#include "snake_game.h"
+#include "brick_game.h"
 
 static AppContext g_app_ctx;
 
@@ -39,19 +43,46 @@ void App_Init(void)
     ctx->menu_prev_index = 0U;
     ctx->menu_dirty_only = 0U;
     ctx->music_menu_index = 0U;
+    ctx->music_prev_index = 0U;
+    ctx->settings_index = 0U;
+    ctx->settings_prev_index = 0U;
+    ctx->active_game_id = APP_GAME_SNAKE;
     ctx->active_game = Snake_Game_GetOps();
+    ctx->boot_static_drawn = 0U;
+    ctx->boot_prev_phase = 0U;
+    ctx->last_render_state = APP_STATE_ABOUT;
 
     Audio_Service_SetVolumePercent(Storage_Service_GetVolumePercent());
     Audio_Service_SetEnabled(Storage_Service_GetSoundEnabled());
+    Snake_Game_SetDifficulty(Storage_Service_GetSnakeDifficulty());
+    Brick_Game_SetDifficulty(Storage_Service_GetBrickDifficulty());
+    Brick_Game_SetInitLives(Storage_Service_GetBrickInitLives());
+    Player_Init();
+    if (Audio_Service_IsEnabled() != 0U)
+    {
+        /* 开机时自动播放开机音乐（PCM: 0x00980000）。 */
+        Player_Play(3U);
+    }
     if (ctx->active_game != (const GameOps *)0)
     {
         if (ctx->active_game->init != (void (*)(void))0)
         {
             ctx->active_game->init();
         }
-        if (ctx->active_game->set_high_score != (void (*)(uint16_t))0)
+        if (ctx->active_game_id == APP_GAME_SNAKE)
         {
             ctx->active_game->set_high_score(Storage_Service_GetSnakeHighScore());
+        }
+    }
+    {
+        const GameOps *brick = Brick_Game_GetOps();
+        if ((brick != (const GameOps *)0) && (brick->init != (void (*)(void))0))
+        {
+            brick->init();
+        }
+        if ((brick != (const GameOps *)0) && (brick->set_high_score != (void (*)(uint16_t))0))
+        {
+            brick->set_high_score(Storage_Service_GetBrickHighScore());
         }
     }
 }
@@ -62,6 +93,7 @@ void App_Update(void)
     AppContext *ctx = &g_app_ctx;
 
     Audio_Service_Tick();
+    Player_Tick(now);
 
     if ((now - ctx->last_led_tick) >= APP_LED_PERIOD_MS)
     {
@@ -94,7 +126,7 @@ void App_Update(void)
 
     App_ProcessInput(ctx, now);
 
-    if (ctx->app_state == APP_STATE_SNAKE_GAME)
+    if (ctx->app_state == APP_STATE_GAME)
     {
         if ((ctx->active_game != (const GameOps *)0) && (ctx->active_game->update != (void (*)(uint32_t))0))
         {
@@ -102,9 +134,16 @@ void App_Update(void)
         }
         if ((ctx->active_game != (const GameOps *)0) && (ctx->active_game->get_high_score != (uint16_t (*)(void))0))
         {
-            Storage_Service_SetSnakeHighScore(ctx->active_game->get_high_score());
+            if (ctx->active_game_id == APP_GAME_SNAKE)
+            {
+                Storage_Service_SetSnakeHighScore(ctx->active_game->get_high_score());
+            }
+            else
+            {
+                Storage_Service_SetBrickHighScore(ctx->active_game->get_high_score());
+            }
         }
-        if ((now - ctx->last_snake_render_tick) >= APP_SNAKE_RENDER_MS)
+        if ((now - ctx->last_snake_render_tick) >= APP_GAME_RENDER_MS)
         {
             ctx->last_snake_render_tick = now;
             if ((ctx->active_game != (const GameOps *)0) && (ctx->active_game->render != (void (*)(void))0))

@@ -65,12 +65,22 @@ typedef struct
     uint16_t repeat_events;
 } InputEventFrame;
 
+typedef struct
+{
+    uint32_t queue_overflow_count;
+    uint16_t queue_peak_depth;
+    uint8_t calibrated;
+    uint16_t center_x;
+    uint16_t center_y;
+} InputDiagnostics;
+
 void Input_Service_Init(void);
 void Input_Service_Update(void);
 const InputSnapshot *Input_Service_GetSnapshot(void);
 void Input_Service_ClearEdgeEvents(void);
 uint8_t Input_Service_DequeueEventFrame(InputEventFrame *out_frame);
 const char *Input_DirectionToString(InputDirection direction);
+void Input_Service_GetDiagnostics(InputDiagnostics *out_diag);
 
 #ifdef __cplusplus
 }

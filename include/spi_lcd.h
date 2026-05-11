@@ -9,11 +9,10 @@ extern "C" {
 
 extern SPI_HandleTypeDef hspi1;
 
-void MX_SPI1_LCD_Init(void);
+HAL_StatusTypeDef MX_SPI1_LCD_Init(void);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* __SPI_LCD_H__ */
-

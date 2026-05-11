@@ -26,4 +26,13 @@
 #define INPUT_REPEAT_START_MS         500U
 #define INPUT_REPEAT_INTERVAL_MS      180U
 
+/* 开机自动中心校准：采样窗口时长（ms）。 */
+#define INPUT_AUTO_CALIBRATION_MS     1000U
+
+/* 相对中心值的方向进入/退出阈值（ADC 码值偏移量）。 */
+#define JOY_X_ENTER_DELTA             650U
+#define JOY_X_EXIT_DELTA              420U
+#define JOY_Y_ENTER_DELTA             650U
+#define JOY_Y_EXIT_DELTA              420U
+
 #endif /* __INPUT_CONFIG_H__ */

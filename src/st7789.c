@@ -58,25 +58,29 @@ static void st7789_unselect(void)
     HAL_GPIO_WritePin(ST7789_CS_GPIO_PORT, ST7789_CS_PIN, GPIO_PIN_SET);
 }
 
-static void st7789_write_cmd(uint8_t cmd)
+static HAL_StatusTypeDef st7789_write_cmd(uint8_t cmd)
 {
+    HAL_StatusTypeDef rc;
     HAL_GPIO_WritePin(ST7789_DC_GPIO_PORT, ST7789_DC_PIN, GPIO_PIN_RESET);
     st7789_select();
-    HAL_SPI_Transmit(&hspi1, &cmd, 1U, HAL_MAX_DELAY);
+    rc = HAL_SPI_Transmit(&hspi1, &cmd, 1U, HAL_MAX_DELAY);
     st7789_unselect();
+    return rc;
 }
 
-static void st7789_write_data(const uint8_t *data, uint16_t size)
+static HAL_StatusTypeDef st7789_write_data(const uint8_t *data, uint16_t size)
 {
+    HAL_StatusTypeDef rc;
     HAL_GPIO_WritePin(ST7789_DC_GPIO_PORT, ST7789_DC_PIN, GPIO_PIN_SET);
     st7789_select();
-    HAL_SPI_Transmit(&hspi1, (uint8_t *)data, size, HAL_MAX_DELAY);
+    rc = HAL_SPI_Transmit(&hspi1, (uint8_t *)data, size, HAL_MAX_DELAY);
     st7789_unselect();
+    return rc;
 }
 
-static void st7789_write_u8(uint8_t data)
+static HAL_StatusTypeDef st7789_write_u8(uint8_t data)
 {
-    st7789_write_data(&data, 1U);
+    return st7789_write_data(&data, 1U);
 }
 
 static void st7789_hw_reset(void)
@@ -87,30 +91,35 @@ static void st7789_hw_reset(void)
     HAL_Delay(120);
 }
 
-static void st7789_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+static HAL_StatusTypeDef st7789_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 {
     uint8_t data[4];
+    HAL_StatusTypeDef rc;
 
     x0 += ST7789_X_OFFSET;
     x1 += ST7789_X_OFFSET;
     y0 += ST7789_Y_OFFSET;
     y1 += ST7789_Y_OFFSET;
 
-    st7789_write_cmd(ST7789_CASET);
+    rc = st7789_write_cmd(ST7789_CASET);
+    if (rc != HAL_OK) return rc;
     data[0] = (uint8_t)(x0 >> 8);
     data[1] = (uint8_t)(x0 & 0xFF);
     data[2] = (uint8_t)(x1 >> 8);
     data[3] = (uint8_t)(x1 & 0xFF);
-    st7789_write_data(data, 4U);
+    rc = st7789_write_data(data, 4U);
+    if (rc != HAL_OK) return rc;
 
-    st7789_write_cmd(ST7789_RASET);
+    rc = st7789_write_cmd(ST7789_RASET);
+    if (rc != HAL_OK) return rc;
     data[0] = (uint8_t)(y0 >> 8);
     data[1] = (uint8_t)(y0 & 0xFF);
     data[2] = (uint8_t)(y1 >> 8);
     data[3] = (uint8_t)(y1 & 0xFF);
-    st7789_write_data(data, 4U);
+    rc = st7789_write_data(data, 4U);
+    if (rc != HAL_OK) return rc;
 
-    st7789_write_cmd(ST7789_RAMWR);
+    return st7789_write_cmd(ST7789_RAMWR);
 }
 
 void ST7789_SetRotation(ST7789_Rotation rotation)
@@ -138,11 +147,11 @@ void ST7789_SetRotation(ST7789_Rotation rotation)
         break;
     }
 
-    st7789_write_cmd(ST7789_MADCTL);
-    st7789_write_u8(madctl);
+    (void)st7789_write_cmd(ST7789_MADCTL);
+    (void)st7789_write_u8(madctl);
 }
 
-void ST7789_Init(void)
+HAL_StatusTypeDef ST7789_Init(void)
 {
     static const uint8_t b2_data[] = {0x0CU, 0x0CU, 0x00U, 0x33U, 0x33U};
     static const uint8_t d0_data[] = {0xA4U, 0xA1U};
@@ -152,49 +161,50 @@ void ST7789_Init(void)
     st7789_gpio_init();
     st7789_hw_reset();
 
-    st7789_write_cmd(ST7789_SWRESET);
+    if (st7789_write_cmd(ST7789_SWRESET) != HAL_OK) return HAL_ERROR;
     HAL_Delay(150);
-    st7789_write_cmd(ST7789_SLPOUT);
+    if (st7789_write_cmd(ST7789_SLPOUT) != HAL_OK) return HAL_ERROR;
     HAL_Delay(120);
 
     ST7789_SetRotation(ST7789_ROTATION_0);
 
-    st7789_write_cmd(ST7789_COLMOD);
-    st7789_write_u8(0x05U);
+    if (st7789_write_cmd(ST7789_COLMOD) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_u8(0x05U) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xB2U);
-    st7789_write_data(b2_data, sizeof(b2_data));
+    if (st7789_write_cmd(0xB2U) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_data(b2_data, sizeof(b2_data)) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xB7U);
-    st7789_write_u8(0x35U);
+    if (st7789_write_cmd(0xB7U) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_u8(0x35U) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xBBU);
-    st7789_write_u8(0x32U);
+    if (st7789_write_cmd(0xBBU) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_u8(0x32U) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xC2U);
-    st7789_write_u8(0x01U);
+    if (st7789_write_cmd(0xC2U) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_u8(0x01U) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xC3U);
-    st7789_write_u8(0x15U);
+    if (st7789_write_cmd(0xC3U) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_u8(0x15U) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xC4U);
-    st7789_write_u8(0x20U);
+    if (st7789_write_cmd(0xC4U) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_u8(0x20U) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xC6U);
-    st7789_write_u8(0x0FU);
+    if (st7789_write_cmd(0xC6U) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_u8(0x0FU) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xD0U);
-    st7789_write_data(d0_data, sizeof(d0_data));
+    if (st7789_write_cmd(0xD0U) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_data(d0_data, sizeof(d0_data)) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xE0U);
-    st7789_write_data(e0_data, sizeof(e0_data));
+    if (st7789_write_cmd(0xE0U) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_data(e0_data, sizeof(e0_data)) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(0xE1U);
-    st7789_write_data(e1_data, sizeof(e1_data));
+    if (st7789_write_cmd(0xE1U) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_data(e1_data, sizeof(e1_data)) != HAL_OK) return HAL_ERROR;
 
-    st7789_write_cmd(ST7789_INVON);
-    st7789_write_cmd(ST7789_DISPON);
+    if (st7789_write_cmd(ST7789_INVON) != HAL_OK) return HAL_ERROR;
+    if (st7789_write_cmd(ST7789_DISPON) != HAL_OK) return HAL_ERROR;
     HAL_Delay(50);
+    return HAL_OK;
 }
 
 void ST7789_DrawPixel(uint16_t x, uint16_t y, uint16_t color)
@@ -206,10 +216,13 @@ void ST7789_DrawPixel(uint16_t x, uint16_t y, uint16_t color)
         return;
     }
 
-    st7789_set_address_window(x, y, x, y);
+    if (st7789_set_address_window(x, y, x, y) != HAL_OK)
+    {
+        return;
+    }
     data[0] = (uint8_t)(color >> 8);
     data[1] = (uint8_t)(color & 0xFF);
-    st7789_write_data(data, 2U);
+    (void)st7789_write_data(data, 2U);
 }
 
 void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
@@ -232,7 +245,10 @@ void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t co
         h = ST7789_HEIGHT - y;
     }
 
-    st7789_set_address_window(x, y, (uint16_t)(x + w - 1U), (uint16_t)(y + h - 1U));
+    if (st7789_set_address_window(x, y, (uint16_t)(x + w - 1U), (uint16_t)(y + h - 1U)) != HAL_OK)
+    {
+        return;
+    }
     data[0] = (uint8_t)(color >> 8);
     data[1] = (uint8_t)(color & 0xFF);
 
@@ -274,7 +290,10 @@ void ST7789_DrawRGB565Bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, con
         h = ST7789_HEIGHT - y;
     }
 
-    st7789_set_address_window(x, y, (uint16_t)(x + w - 1U), (uint16_t)(y + h - 1U));
+    if (st7789_set_address_window(x, y, (uint16_t)(x + w - 1U), (uint16_t)(y + h - 1U)) != HAL_OK)
+    {
+        return;
+    }
     HAL_GPIO_WritePin(ST7789_DC_GPIO_PORT, ST7789_DC_PIN, GPIO_PIN_SET);
     st7789_select();
 

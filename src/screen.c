@@ -20,3 +20,8 @@ void Screen_DrawText(uint16_t x, uint16_t y, const char *text, uint16_t fg, uint
 {
     GFX_DrawText8x16(x, y, text, fg, bg);
 }
+
+void Screen_DrawTextUtf8Fallback(uint16_t x, uint16_t y, const char *text, uint16_t fg, uint16_t bg)
+{
+    GFX_DrawTextUtf8Fallback(x, y, text, fg, bg);
+}

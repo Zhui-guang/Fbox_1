@@ -14,6 +14,7 @@ typedef struct
 } DebounceState;
 
 static InputSnapshot input_snapshot;
+static InputDiagnostics input_diag;
 static uint16_t previous_held_events;
 static uint16_t repeat_reference_events;
 static uint32_t repeat_start_tick;
@@ -29,6 +30,13 @@ static InputEventFrame event_queue[INPUT_EVENT_QUEUE_SIZE];
 static uint8_t event_queue_head;
 static uint8_t event_queue_tail;
 static uint8_t event_queue_count;
+static uint32_t calibration_start_tick;
+static uint32_t calibration_sum_x;
+static uint32_t calibration_sum_y;
+static uint16_t calibration_samples;
+
+static uint16_t joy_center_x = 2048U;
+static uint16_t joy_center_y = 2048U;
 
 static void enqueue_event_frame(uint16_t pressed_events, uint16_t released_events, uint16_t repeat_events)
 {
@@ -46,6 +54,7 @@ static void enqueue_event_frame(uint16_t pressed_events, uint16_t released_event
         /* 队列满时丢弃最旧事件，保证最新交互优先。 */
         event_queue_head = (uint8_t)((event_queue_head + 1U) % INPUT_EVENT_QUEUE_SIZE);
         event_queue_count--;
+        input_diag.queue_overflow_count++;
     }
 
     slot = &event_queue[event_queue_tail];
@@ -54,6 +63,10 @@ static void enqueue_event_frame(uint16_t pressed_events, uint16_t released_event
     slot->repeat_events = repeat_events;
     event_queue_tail = (uint8_t)((event_queue_tail + 1U) % INPUT_EVENT_QUEUE_SIZE);
     event_queue_count++;
+    if (event_queue_count > input_diag.queue_peak_depth)
+    {
+        input_diag.queue_peak_depth = event_queue_count;
+    }
 }
 
 static void debounce_init(DebounceState *state)
@@ -89,18 +102,20 @@ static uint8_t debounce_update(DebounceState *state, uint8_t raw_pressed)
 
 static uint8_t direction_still_active(InputDirection direction, uint16_t x, uint16_t y)
 {
+    int32_t cx = (int32_t)joy_center_x;
+    int32_t cy = (int32_t)joy_center_y;
     /* 方向迟滞：已经进入某方向后，必须回到退出阈值以内才回 CENTER。
      * 这样可减少摇杆边缘抖动造成的方向反复切换。 */
     switch (direction)
     {
     case INPUT_DIR_LEFT:
-        return x < JOY_X_LEFT_EXIT_THRESHOLD;
+        return (int32_t)x < (cx - (int32_t)JOY_X_EXIT_DELTA);
     case INPUT_DIR_RIGHT:
-        return x > JOY_X_RIGHT_EXIT_THRESHOLD;
+        return (int32_t)x > (cx + (int32_t)JOY_X_EXIT_DELTA);
     case INPUT_DIR_DOWN:
-        return y < JOY_Y_DOWN_EXIT_THRESHOLD;
+        return (int32_t)y < (cy - (int32_t)JOY_Y_EXIT_DELTA);
     case INPUT_DIR_UP:
-        return y > JOY_Y_UP_EXIT_THRESHOLD;
+        return (int32_t)y > (cy + (int32_t)JOY_Y_EXIT_DELTA);
     default:
         return 0;
     }
@@ -110,28 +125,32 @@ static InputDirection joystick_direction_from_adc(uint16_t x, uint16_t y)
 {
     uint16_t x_delta = 0;
     uint16_t y_delta = 0;
+    int32_t cx = (int32_t)joy_center_x;
+    int32_t cy = (int32_t)joy_center_y;
+    int32_t xi = (int32_t)x;
+    int32_t yi = (int32_t)y;
 
     if (direction_still_active(input_snapshot.direction, x, y))
     {
         return input_snapshot.direction;
     }
 
-    if (x < JOY_X_LEFT_ENTER_THRESHOLD)
+    if (xi < (cx - (int32_t)JOY_X_ENTER_DELTA))
     {
-        x_delta = JOY_X_LEFT_ENTER_THRESHOLD - x;
+        x_delta = (uint16_t)((cx - (int32_t)JOY_X_ENTER_DELTA) - xi);
     }
-    else if (x > JOY_X_RIGHT_ENTER_THRESHOLD)
+    else if (xi > (cx + (int32_t)JOY_X_ENTER_DELTA))
     {
-        x_delta = x - JOY_X_RIGHT_ENTER_THRESHOLD;
+        x_delta = (uint16_t)(xi - (cx + (int32_t)JOY_X_ENTER_DELTA));
     }
 
-    if (y < JOY_Y_DOWN_ENTER_THRESHOLD)
+    if (yi < (cy - (int32_t)JOY_Y_ENTER_DELTA))
     {
-        y_delta = JOY_Y_DOWN_ENTER_THRESHOLD - y;
+        y_delta = (uint16_t)((cy - (int32_t)JOY_Y_ENTER_DELTA) - yi);
     }
-    else if (y > JOY_Y_UP_ENTER_THRESHOLD)
+    else if (yi > (cy + (int32_t)JOY_Y_ENTER_DELTA))
     {
-        y_delta = y - JOY_Y_UP_ENTER_THRESHOLD;
+        y_delta = (uint16_t)(yi - (cy + (int32_t)JOY_Y_ENTER_DELTA));
     }
 
     if (x_delta == 0 && y_delta == 0)
@@ -143,7 +162,7 @@ static InputDirection joystick_direction_from_adc(uint16_t x, uint16_t y)
      * 菜单和贪吃蛇一般只需要四方向，这样可避免同时触发两个方向。 */
     if (x_delta > y_delta)
     {
-        InputDirection x_dir = (x < JOY_X_LEFT_ENTER_THRESHOLD) ? INPUT_DIR_LEFT : INPUT_DIR_RIGHT;
+        InputDirection x_dir = (x < joy_center_x) ? INPUT_DIR_LEFT : INPUT_DIR_RIGHT;
 #if JOY_X_INVERT_DIRECTION
         x_dir = (x_dir == INPUT_DIR_LEFT) ? INPUT_DIR_RIGHT : INPUT_DIR_LEFT;
 #endif
@@ -151,7 +170,7 @@ static InputDirection joystick_direction_from_adc(uint16_t x, uint16_t y)
     }
 
     {
-        InputDirection y_dir = (y > JOY_Y_UP_ENTER_THRESHOLD) ? INPUT_DIR_UP : INPUT_DIR_DOWN;
+        InputDirection y_dir = (y > joy_center_y) ? INPUT_DIR_UP : INPUT_DIR_DOWN;
 #if JOY_Y_INVERT_DIRECTION
         y_dir = (y_dir == INPUT_DIR_UP) ? INPUT_DIR_DOWN : INPUT_DIR_UP;
 #endif
@@ -266,6 +285,41 @@ void Input_Service_Init(void)
     event_queue_head = 0U;
     event_queue_tail = 0U;
     event_queue_count = 0U;
+
+    input_diag.queue_overflow_count = 0U;
+    input_diag.queue_peak_depth = 0U;
+    input_diag.calibrated = 0U;
+    input_diag.center_x = joy_center_x;
+    input_diag.center_y = joy_center_y;
+
+    calibration_start_tick = HAL_GetTick();
+    calibration_sum_x = 0U;
+    calibration_sum_y = 0U;
+    calibration_samples = 0U;
+}
+
+static void input_try_auto_calibration(uint32_t now_tick, uint16_t raw_x, uint16_t raw_y)
+{
+    if (input_diag.calibrated != 0U)
+    {
+        return;
+    }
+
+    calibration_sum_x += raw_x;
+    calibration_sum_y += raw_y;
+    calibration_samples++;
+
+    if ((now_tick - calibration_start_tick) >= INPUT_AUTO_CALIBRATION_MS)
+    {
+        if (calibration_samples > 0U)
+        {
+            joy_center_x = (uint16_t)(calibration_sum_x / calibration_samples);
+            joy_center_y = (uint16_t)(calibration_sum_y / calibration_samples);
+        }
+        input_diag.calibrated = 1U;
+        input_diag.center_x = joy_center_x;
+        input_diag.center_y = joy_center_y;
+    }
 }
 
 void Input_Service_Update(void)
@@ -277,6 +331,7 @@ void Input_Service_Update(void)
     /* 服务层每次扫描都先读取原始驱动值，再统一生成事件位。 */
     input_snapshot.joy_x = Joystick_ReadX();
     input_snapshot.joy_y = Joystick_ReadY();
+    input_try_auto_calibration(now, input_snapshot.joy_x, input_snapshot.joy_y);
     input_snapshot.joy_sw_pressed = debounce_update(&joy_sw_debounce, Joystick_SW_IsPressed());
     input_snapshot.key_b_pressed = debounce_update(&key_b_debounce, Key_B_IsPressed());
     input_snapshot.key_start_pressed = debounce_update(&key_start_debounce, Key_Start_IsPressed());
@@ -337,4 +392,13 @@ const char *Input_DirectionToString(InputDirection direction)
     default:
         return "CENTER";
     }
+}
+
+void Input_Service_GetDiagnostics(InputDiagnostics *out_diag)
+{
+    if (out_diag == (InputDiagnostics *)0)
+    {
+        return;
+    }
+    *out_diag = input_diag;
 }
